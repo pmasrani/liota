@@ -34,6 +34,7 @@ import logging
 import imp
 import os
 import fcntl
+import signal
 import stat
 import re
 from threading import Thread, Lock
@@ -333,7 +334,6 @@ class PackageRecord:
         """
         self._dependencies = list_dependencies
 
-
 class PackageThread(Thread):
     """
     PackageThread should be instantiated only once.
@@ -605,8 +605,10 @@ class PackageThread(Thread):
         'Failure' means that verification fails; 'Unsupported' means
         that receives some unsupported commands.
         """
+        signal.alarm(5) # Wait for the reader for 5 seconds and timout to avoid permanent blocking of liotad
         try:
-            with open(self._rsp_pipe_file, "w+") as fp:
+            with open(self._rsp_pipe_file, "w") as fp:
+                signal.alarm(0)          # Disable the alarm
                 fp.write(msg)
         except:
             log.exception("open file:{0} failed".format(self._rsp_pipe_file))
@@ -1435,6 +1437,15 @@ def initialize():
     # Mark package manager as initialized
     is_package_manager_initialized = True
     log.info("Package manager is initialized")
+
+def _alarm_handler(signum, frame):
+    """
+    A signal handler to handle whenever an alarm is raised.
+    """
+    log.error("Unable to open pipe: {0}".format(package_response_pipe))
+
+# Enable the signal handler
+signal.signal(signal.SIGALRM, _alarm_handler)
 
 # Initialization of this module
 if not is_package_manager_initialized:
